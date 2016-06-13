@@ -27,7 +27,8 @@ Also make sure you have skipper [installed as your body parser](http://beta.sail
 req.file('avatar')
 .upload({
   adapter: require('skipper-gridfs'),
-  uri: 'mongodb://jimmy@j1mtr0n1xx@mongo.jimmy.com:27017/coolapp.avatar_uploads'
+  uri: 'mongodb://jimmy@j1mtr0n1xx@mongo.jimmy.com:27017/coolapp'
+  bucket: 'avatar_uploads'
 }, function whenDone(err, uploadedFiles) {
   if (err) return res.negotiate(err);
   else return res.ok({
@@ -44,11 +45,12 @@ One important adapter-specific option to note is `uri`:
 
 | Option        | Type       | Details |
 |-----------    |:----------:|---------|
-| `uri`         | ((string)) | An optional parameter if you wish the enter your mongodb credentials as a URI, e.g. `mongodb://username:password@localhost:27107/databasename.bucket`.<br/> (Check [mongo client URI syntax](http://api.mongodb.org/java/current/com/mongodb/MongoClientURI.html)).|
-| `connectOpts` | ((object)) | An optional parameter if you wish the enter your mongodb connection options credentials as an object e.g. `{ server: { ssl: true, sslCA: 'CA_CERT', sslKey: 'SSL_KEY', sslCert: 'SSL_CERT' }, replSet: { rs_name: 'rs0', ssl:true} }` <br/> (Check [mongo client connection options](https://mongodb.github.io/node-mongodb-native/api-generated/mongoclient.html#connect)).|
+| `uri`         | ((string)) | An optional parameter if you wish the enter your mongodb credentials as a URI, e.g. `mongodb://username:password@localhost:27107/databasename`.<br/> (Check [mongo client URI syntax](https://github.com/mongolab/mongodb-uri-node)).|
+| `bucket`     | ((string)) | An optional parameter if you wish to override the default bucket 'fs'.|
+
 
 >>Note:
->>Please use `uri` instead of passing in separate options for `username`, `password`, `host`, `port`, `dbname` and `bucket`
+>>Please use `uri` instead of passing in separate options for `username`, `password`, `hosts`, `database`, `options` and `bucket`
 
 In addition to the regular file adapter [methods](https://github.com/balderdashy/skipper#what-are-filesystem-adapters), these additional methods are also available:
 
