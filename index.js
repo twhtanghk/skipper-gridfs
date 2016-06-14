@@ -167,18 +167,20 @@
             fd = __newFile.fd;
             return self.conn.then((function(_this) {
               return function() {
+                var metadata;
+                metadata = _.extend(__newFile.metadata || {}, {
+                  fd: fd,
+                  dirname: __newFile.dirname || path.dirname(fd)
+                });
                 _this.outs = self.gfs.createWriteStream({
                   filename: fd,
                   root: self.opts.bucket,
-                  metadata: {
-                    fd: fd,
-                    dirname: __newFile.dirname || path.dirname(fd)
-                  }
+                  metadata: metadata
                 });
                 _this.outs.once('open', function() {
                   return __newFile.extra = _.assign({
                     fileId: this.id
-                  }, this.options.metadata);
+                  }, metadata);
                 });
                 _this.outs.once('close', function(file) {
                   return done(null, file);

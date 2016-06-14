@@ -120,15 +120,17 @@ module.exports = (opts) ->
 				
 				self.conn
 					.then =>
+						metadata = _.extend __newFile.metadata || {},
+							fd:			fd
+							dirname:	__newFile.dirname || path.dirname(fd)
+							
 						@outs = self.gfs.createWriteStream
 							filename:	fd
 							root:		self.opts.bucket
-							metadata:
-								fd:		fd
-								dirname:	__newFile.dirname || path.dirname(fd)
+							metadata: metadata								
 						
 						@outs.once 'open', ->
-							__newFile.extra = _.assign({fileId: @id}, @options.metadata);
+							__newFile.extra = _.assign fileId: @id, metadata
 						
 						@outs.once 'close', (file) ->
 							done null, file
