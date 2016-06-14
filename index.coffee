@@ -36,11 +36,10 @@ module.exports = (opts) ->
 		scheme:	'mongodb'
 		bucket:	GridStore.DEFAULT_ROOT_COLLECTION
 		port:	27017
-	self.conn = client.connect self.opts.uri || mongodbUri.format(self.opts)
+	self.conn = client.connect(self.opts.uri || mongodbUri.format(self.opts), promiseLibrary: Promise)
 		.then (db) ->
 			self.db = db
 			self.gfs = Grid self.db, server
-			Promise.resolve()
 				
 	ls: (dirname) ->
 		self.conn
@@ -55,7 +54,7 @@ module.exports = (opts) ->
 						.distinct 'filename', 'metadata.dirname': dirname, (err, files) ->
                         	if err 
                         		return Promise.reject err
-                        	Promise.resolve files
+                        	return files
 	        
 	read: (fd) ->
 		@readLastVersion fd, cb
@@ -105,7 +104,6 @@ module.exports = (opts) ->
 					self.gfs.remove {filename: fd, root: self.opts.bucket}, (err) ->
 						if err
 							return Promise.reject err
-						Promise.resolve()
 			
 	receive: (opts) ->
 		
@@ -128,23 +126,25 @@ module.exports = (opts) ->
 							metadata:
 								fd:		fd
 								dirname:	__newFile.dirname || path.dirname(fd)
+						
 						@outs.once 'open', ->
 							__newFile.extra = _.assign({fileId: @id}, @options.metadata);
+						
 						@outs.once 'close', (file) ->
 							done null, file
 						
 						# end downstream if error from upstream	
 						__newFile.once 'error', (err) =>
-							@end()
-							@outs.end()
-						# end receiver stream and notify upstream if error from downstream
-						@outs.once 'error', (err) =>
-							@end()
-							done err
+							@outs?.end()
+							Promise.reject err
+						
+						@outs.once 'error', Promise.reject
 							
 						__newFile.pipe @outs
-					.catch (err) ->
-						console.log 'mongo connection not available'
+						
+					.catch (err) =>
+						# end receiver stream and notify upstream if error from downstream
+						@end()
 						done err
 		
 		return new Receiver

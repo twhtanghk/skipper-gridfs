@@ -54,10 +54,11 @@
       bucket: GridStore.DEFAULT_ROOT_COLLECTION,
       port: 27017
     });
-    self.conn = client.connect(self.opts.uri || mongodbUri.format(self.opts)).then(function(db) {
+    self.conn = client.connect(self.opts.uri || mongodbUri.format(self.opts), {
+      promiseLibrary: Promise
+    }).then(function(db) {
       self.db = db;
-      self.gfs = Grid(self.db, server);
-      return Promise.resolve();
+      return self.gfs = Grid(self.db, server);
     });
     return {
       ls: function(dirname) {
@@ -77,7 +78,7 @@
               if (err) {
                 return Promise.reject(err);
               }
-              return Promise.resolve(files);
+              return files;
             });
           });
         });
@@ -142,7 +143,6 @@
               if (err) {
                 return Promise.reject(err);
               }
-              return Promise.resolve();
             });
           });
         });
@@ -184,19 +184,21 @@
                   return done(null, file);
                 });
                 __newFile.once('error', function(err) {
-                  _this.end();
-                  return _this.outs.end();
+                  var _ref;
+                  if ((_ref = _this.outs) != null) {
+                    _ref.end();
+                  }
+                  return Promise.reject(err);
                 });
-                _this.outs.once('error', function(err) {
-                  _this.end();
-                  return done(err);
-                });
+                _this.outs.once('error', Promise.reject);
                 return __newFile.pipe(_this.outs);
               };
-            })(this))["catch"](function(err) {
-              console.log('mongo connection not available');
-              return done(err);
-            });
+            })(this))["catch"]((function(_this) {
+              return function(err) {
+                _this.end();
+                return done(err);
+              };
+            })(this));
           };
 
           return Receiver;
