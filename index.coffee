@@ -2,7 +2,6 @@ path = require 'path'
 util = require 'util'
 stream = require 'stream'
 _ = require 'lodash'
-concat = require 'concat-stream'
 Grid = require 'gridfs-stream'
 Promise = require 'bluebird'
 
@@ -56,42 +55,30 @@ module.exports = (opts) ->
                         		return Promise.reject err
                         	return files
 	        
-	read: (fd) ->
-		@readLastVersion fd, cb
-						
-	readLastVersion: (fd) ->
-		@readVersion fd, -1, cb
-		
-	readVersion: (fd, version) ->
+	read: (fd, version = -1) ->
 		self.conn
 			.then ->
-				self.gfs
-					.collection self.opts.bucket
-					.find filename: fd
-					.limit -1
-					.skip if version < 0 then Math.abs(version) - 1 else version
-					.sort { uploadDate: if version < 0 then -1 else 1 } 
-					.next (err, file) ->
-						if err
-							return Promise.reject err
-
-						if !file
-							err = new Error('ENOENT')
-							_.extend err,
-								name:		'Error (ENOENT)'
-								code:		'ENOENT'
-								status:		404
-								message:	"No file exists in this mongo gridfs bucket with that file descriptor (#{fd})"
-							return Promise.reject err
-                    
-						gridStore = new GridStore self.db, file._id, 'r', root: self.opts.bucket
-						gridStore.open (err, gridStore) ->
+				new Promise (resolve, reject) ->
+					self.gfs
+						.collection self.opts.bucket
+						.find filename: fd
+						.limit -1
+						.skip if version < 0 then Math.abs(version) - 1 else version
+						.sort { uploadDate: if version < 0 then -1 else 1 } 
+						.next (err, file) ->
 							if err
 								return reject err
-                        
-							stream = gridStore.stream()
-							stream.pipe concat Promise.resolve
-							stream.on 'error', Promise.reject
+	
+							if !file
+								return resolve null
+	                    
+							gridStore = new GridStore self.db, file._id, 'r', root: self.opts.bucket
+							gridStore.open = Promise.promisify gridStore.open
+							gridStore.open()
+								.then (gridStore) ->
+									stream = gridStore.stream()
+									stream.on 'error', reject
+									resolve stream
 				
 	rm: (fd) ->
 		self.conn
@@ -116,7 +103,7 @@ module.exports = (opts) ->
 				super(opts)
 			
 			_write: (__newFile, encoding, done) ->
-				fd = __newFile.fd
+				fd = __newFile.filename
 				
 				self.conn
 					.then =>
