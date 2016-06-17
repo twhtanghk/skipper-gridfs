@@ -38,7 +38,9 @@ module.exports = (opts) ->
 	self.conn = client.connect(self.opts.uri || mongodbUri.format(self.opts), promiseLibrary: Promise)
 		.then (db) ->
 			self.db = db
-			self.gfs = Grid self.db, server
+			self.gfs = Promise.promisifyAll Grid(self.db, server)
+			self.gridStore = (fileId, mode, opts = root: self.opts.bucket) ->
+				Promise.promisifyAll new GridStore self.db, fileId, mode, opts
 				
 	ls: (dirname) ->
 		self.conn
@@ -46,52 +48,86 @@ module.exports = (opts) ->
 				index =	
 					filename: 	1
 					uploadDate: -1
-				self.gfs.collection(self.opts.bucket).ensureIndex index, (err, indexName) ->
-					if err
-						return Promise.reject err
-					self.gfs.collection	self.opts.bucket
-						.distinct 'filename', 'metadata.dirname': dirname, (err, files) ->
-                        	if err 
-                        		return Promise.reject err
-                        	return files
+				new Promise (resolve, reject) ->
+					self.gfs.collection(self.opts.bucket).ensureIndex index, (err, indexName) ->
+						if err
+							return reject err
+						self.gfs.collection	self.opts.bucket
+							.distinct 'filename', 'metadata.dirname': dirname, (err, files) ->
+	                        	if err 
+	                        		return reject err
+	                        	return resolve files
 	        
+	# default to read last uploaded version
 	read: (fd, version = -1) ->
+		self.conn
+			.then =>
+				@find fd, version
+					.then (file) ->
+						self.gridStore file._id, 'r', root: self.opts.bucket
+							.openAsync()
+							.then (content) ->
+								out = content.stream()
+								out.on 'error', Promise.reject
+								return out
+				
+	###
+	version:
+		null:
+			remove all versions of the specified file
+		n:
+			remove nth version of the specified file
+		[i1, i2, ...]:
+			remove all versions listed in the array 
+	###
+	rm: (fd, version = null) ->
+		if version?
+			switch true
+				when typeof version == 'number'
+					@find fd, version
+						.then (file) ->
+							self.gfs.removeAsync {_id: file._id, root: self.opts.bucket}
+						.then ->
+							ret = {}
+							ret[fd] = version
+							Promise.resolve ret
+				when Array.isArray version
+					Promise
+						.map version, (v) =>
+							@rm fd, v
+				else
+					Promise.reject "invalid version"
+		else
+			self.conn
+				.then ->
+					result = self.gfs.files
+						.find filename: fd
+					Promise.promisifyAll result 
+						.toArrayAsync()
+						.then (files) ->
+							if files.length == 0
+								return Promise.reject "#{fd} not found"
+							Promise.map files, (file) ->
+								self.gfs.removeAsync {_id: file._id, root: self.opts.bucket}			 	
+
+	# return the specified version of file
+	find: (fd, version) ->
 		self.conn
 			.then ->
 				new Promise (resolve, reject) ->
 					self.gfs
 						.collection self.opts.bucket
 						.find filename: fd
-						.limit -1
-						.skip if version < 0 then Math.abs(version) - 1 else version
-						.sort { uploadDate: if version < 0 then -1 else 1 } 
+						.limit 1
+						.skip Math.abs(version) - 1
+						.sort { uploadDate: if version < 0 then -1 else 1 }
 						.next (err, file) ->
 							if err
 								return reject err
-	
 							if !file
-								return resolve null
-	                    
-							gridStore = new GridStore self.db, file._id, 'r', root: self.opts.bucket
-							gridStore.open = Promise.promisify gridStore.open
-							gridStore.open()
-								.then (gridStore) ->
-									stream = gridStore.stream()
-									stream.on 'error', reject
-									resolve stream
-				
-	rm: (fd) ->
-		self.conn
-			.then ->
-				self.gfs.exist {filename: fd, root: self.opts.bucket}, (err, found) ->
-					if err
-						return Promise.reject err
-					if not found
-						return Promise.reject "#{fd} not found"
-					self.gfs.remove {filename: fd, root: self.opts.bucket}, (err) ->
-						if err
-							return Promise.reject err
-			
+								return reject "version #{version} of #{fd} not found"
+							return resolve file
+							
 	receive: (opts) ->
 		
 		class Receiver extends stream.Writable

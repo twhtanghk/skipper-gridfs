@@ -56,7 +56,15 @@
       promiseLibrary: Promise
     }).then(function(db) {
       self.db = db;
-      return self.gfs = Grid(self.db, server);
+      self.gfs = Promise.promisifyAll(Grid(self.db, server));
+      return self.gridStore = function(fileId, mode, opts) {
+        if (opts == null) {
+          opts = {
+            root: self.opts.bucket
+          };
+        }
+        return Promise.promisifyAll(new GridStore(self.db, fileId, mode, opts));
+      };
     });
     return {
       ls: function(dirname) {
@@ -66,17 +74,19 @@
             filename: 1,
             uploadDate: -1
           };
-          return self.gfs.collection(self.opts.bucket).ensureIndex(index, function(err, indexName) {
-            if (err) {
-              return Promise.reject(err);
-            }
-            return self.gfs.collection(self.opts.bucket).distinct('filename', {
-              'metadata.dirname': dirname
-            }, function(err, files) {
+          return new Promise(function(resolve, reject) {
+            return self.gfs.collection(self.opts.bucket).ensureIndex(index, function(err, indexName) {
               if (err) {
-                return Promise.reject(err);
+                return reject(err);
               }
-              return files;
+              return self.gfs.collection(self.opts.bucket).distinct('filename', {
+                'metadata.dirname': dirname
+              }, function(err, files) {
+                if (err) {
+                  return reject(err);
+                }
+                return resolve(files);
+              });
             });
           });
         });
@@ -85,52 +95,93 @@
         if (version == null) {
           version = -1;
         }
+        return self.conn.then((function(_this) {
+          return function() {
+            return _this.find(fd, version).then(function(file) {
+              return self.gridStore(file._id, 'r', {
+                root: self.opts.bucket
+              }).openAsync().then(function(content) {
+                var out;
+                out = content.stream();
+                out.on('error', Promise.reject);
+                return out;
+              });
+            });
+          };
+        })(this));
+      },
+
+      /*
+      	version:
+      		null:
+      			remove all versions of the specified file
+      		n:
+      			remove nth version of the specified file
+      		[i1, i2, ...]:
+      			remove all versions listed in the array
+       */
+      rm: function(fd, version) {
+        if (version == null) {
+          version = null;
+        }
+        if (version != null) {
+          switch (true) {
+            case typeof version === 'number':
+              return this.find(fd, version).then(function(file) {
+                return self.gfs.removeAsync({
+                  _id: file._id,
+                  root: self.opts.bucket
+                });
+              }).then(function() {
+                var ret;
+                ret = {};
+                ret[fd] = version;
+                return Promise.resolve(ret);
+              });
+            case Array.isArray(version):
+              return Promise.map(version, (function(_this) {
+                return function(v) {
+                  return _this.rm(fd, v);
+                };
+              })(this));
+            default:
+              return Promise.reject("invalid version");
+          }
+        } else {
+          return self.conn.then(function() {
+            var result;
+            result = self.gfs.files.find({
+              filename: fd
+            });
+            return Promise.promisifyAll(result).toArrayAsync().then(function(files) {
+              if (files.length === 0) {
+                return Promise.reject("" + fd + " not found");
+              }
+              return Promise.map(files, function(file) {
+                return self.gfs.removeAsync({
+                  _id: file._id,
+                  root: self.opts.bucket
+                });
+              });
+            });
+          });
+        }
+      },
+      find: function(fd, version) {
         return self.conn.then(function() {
           return new Promise(function(resolve, reject) {
             return self.gfs.collection(self.opts.bucket).find({
               filename: fd
-            }).limit(-1).skip(version < 0 ? Math.abs(version) - 1 : version).sort({
+            }).limit(1).skip(Math.abs(version) - 1).sort({
               uploadDate: version < 0 ? -1 : 1
             }).next(function(err, file) {
-              var gridStore;
               if (err) {
                 return reject(err);
               }
               if (!file) {
-                return resolve(null);
+                return reject("version " + version + " of " + fd + " not found");
               }
-              gridStore = new GridStore(self.db, file._id, 'r', {
-                root: self.opts.bucket
-              });
-              gridStore.open = Promise.promisify(gridStore.open);
-              return gridStore.open().then(function(gridStore) {
-                stream = gridStore.stream();
-                stream.on('error', reject);
-                return resolve(stream);
-              });
-            });
-          });
-        });
-      },
-      rm: function(fd) {
-        return self.conn.then(function() {
-          return self.gfs.exist({
-            filename: fd,
-            root: self.opts.bucket
-          }, function(err, found) {
-            if (err) {
-              return Promise.reject(err);
-            }
-            if (!found) {
-              return Promise.reject("" + fd + " not found");
-            }
-            return self.gfs.remove({
-              filename: fd,
-              root: self.opts.bucket
-            }, function(err) {
-              if (err) {
-                return Promise.reject(err);
-              }
+              return resolve(file);
             });
           });
         });
