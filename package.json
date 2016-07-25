@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "bluebird": "^3.4.0",
-    "concat-stream": "~1.4.6",
+    "concat-stream": "^1.4.10",
     "gridfs-stream": "~1.1.0",
     "lodash": "~2.4.1",
     "mongodb": "^2.0.55",

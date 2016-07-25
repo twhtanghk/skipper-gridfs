@@ -1,6 +1,7 @@
 path = require 'path'
 util = require 'util'
 stream = require 'stream'
+concat = require 'concat-stream'
 _ = require 'lodash'
 Grid = require 'gridfs-stream'
 Promise = require 'bluebird'
@@ -42,7 +43,7 @@ module.exports = (opts) ->
 			self.gridStore = (fileId, mode, opts = root: self.opts.bucket) ->
 				Promise.promisifyAll new GridStore self.db, fileId, mode, opts
 				
-	ls: (dirname) ->
+	ls: (dirname, cb) ->
 		self.conn
 			.then ->
 				index =	
@@ -56,13 +57,16 @@ module.exports = (opts) ->
 							.distinct 'filename', 'metadata.dirname': dirname, (err, files) ->
 	                        	if err 
 	                        		return reject err
-	                        	return resolve files
+	                        	resolve files
+			.then (files) ->
+				cb null, files
+			.catch cb
 	        
 	# default to read last uploaded version
-	read: (fd, version = -1) ->
+	read: (fd, cb) ->
 		self.conn
 			.then =>
-				@find fd, version
+				@find fd, -1
 					.then (file) ->
 						self.gridStore file._id, 'r', root: self.opts.bucket
 							.openAsync()
@@ -70,6 +74,10 @@ module.exports = (opts) ->
 								out = content.stream()
 								out.on 'error', Promise.reject
 								return out
+			.then (stream) ->
+				stream.pipe concat (data) ->
+					cb null, data
+			.catch cb
 				
 	###
 	version:
@@ -139,7 +147,7 @@ module.exports = (opts) ->
 				super(opts)
 			
 			_write: (__newFile, encoding, done) ->
-				fd = __newFile.filename
+				fd = __newFile.fd
 				
 				self.conn
 					.then =>
