@@ -29,9 +29,9 @@
     /*
     		opts:
     			uri:	'mongodb://user:password@localhost:27017/file'
-    			
-    			or 
-    			
+    
+    			or
+    
     			scheme: "mongodb"
     			hosts: [
     				{host: 'host1', port: port1}
@@ -216,28 +216,21 @@
                   fd: fd,
                   dirname: __newFile.dirname || path.dirname(fd)
                 });
-                _this.outs = self.gfs.createWriteStream({
+                return __newFile.pipe(self.gfs.createWriteStream({
                   filename: fd,
                   root: self.opts.bucket,
+                  content_type: __newFile.headers['content-type'],
                   metadata: metadata
-                });
-                _this.outs.once('open', function() {
+                })).once('open', function() {
                   return __newFile.extra = _.assign({
                     fileId: this.id
                   }, metadata);
-                });
-                _this.outs.once('close', function(file) {
+                }).once('close', function(file) {
                   return done(null, file);
-                });
-                __newFile.once('error', function(err) {
-                  var ref;
-                  if ((ref = _this.outs) != null) {
-                    ref.end();
-                  }
+                }).once('error', function(err) {
+                  _this.end();
                   return Promise.reject(err);
                 });
-                _this.outs.once('error', Promise.reject);
-                return __newFile.pipe(_this.outs);
               };
             })(this))["catch"]((function(_this) {
               return function(err) {

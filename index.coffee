@@ -15,9 +15,9 @@ module.exports = (opts) ->
 	###
 		opts:
 			uri:	'mongodb://user:password@localhost:27017/file'
-			
-			or 
-			
+
+			or
+
 			scheme: "mongodb"
 			hosts: [
 				{host: 'host1', port: port1}
@@ -42,11 +42,11 @@ module.exports = (opts) ->
 			self.gfs = Promise.promisifyAll Grid(self.db, server)
 			self.gridStore = (fileId, mode, opts = root: self.opts.bucket) ->
 				Promise.promisifyAll new GridStore self.db, fileId, mode, opts
-				
+
 	ls: (dirname, cb) ->
 		self.conn
 			.then ->
-				index =	
+				index =
 					filename: 	1
 					uploadDate: -1
 				new Promise (resolve, reject) ->
@@ -55,13 +55,13 @@ module.exports = (opts) ->
 							return reject err
 						self.gfs.collection	self.opts.bucket
 							.distinct 'filename', 'metadata.dirname': dirname, (err, files) ->
-	                        	if err 
+	                        	if err
 	                        		return reject err
 	                        	resolve files
 			.then (files) ->
 				cb null, files
 			.catch cb
-	        
+
 	# default to read last uploaded version
 	read: (fd, cb) ->
 		self.conn
@@ -78,7 +78,7 @@ module.exports = (opts) ->
 				stream.pipe concat (data) ->
 					cb null, data
 			.catch cb
-				
+
 	###
 	version:
 		null:
@@ -86,7 +86,7 @@ module.exports = (opts) ->
 		n:
 			remove nth version of the specified file
 		[i1, i2, ...]:
-			remove all versions listed in the array 
+			remove all versions listed in the array
 	###
 	rm: (fd, version = null) ->
 		if version?
@@ -110,13 +110,13 @@ module.exports = (opts) ->
 				.then ->
 					result = self.gfs.files
 						.find filename: fd
-					Promise.promisifyAll result 
+					Promise.promisifyAll result
 						.toArrayAsync()
 						.then (files) ->
 							if files.length == 0
 								return Promise.reject "#{fd} not found"
 							Promise.map files, (file) ->
-								self.gfs.removeAsync {_id: file._id, root: self.opts.bucket}			 	
+								self.gfs.removeAsync {_id: file._id, root: self.opts.bucket}
 
 	# return the specified version of file
 	find: (fd, version) ->
@@ -135,49 +135,46 @@ module.exports = (opts) ->
 							if !file
 								return reject "version #{version} of #{fd} not found"
 							return resolve file
-							
+
 	receive: (opts) ->
-		
+
 		class Receiver extends stream.Writable
-		
+
 			constructor: (opts = {}) ->
-				_.defaults opts, 
+				_.defaults opts,
 					objectMode: true
-					
+
 				super(opts)
-			
+
 			_write: (__newFile, encoding, done) ->
 				fd = __newFile.fd
-				
+
 				self.conn
 					.then =>
 						metadata = _.extend __newFile.metadata || {},
 							fd:			fd
 							dirname:	__newFile.dirname || path.dirname(fd)
-							
-						@outs = self.gfs.createWriteStream
-							filename:	fd
-							root:		self.opts.bucket
-							metadata: metadata								
-						
-						@outs.once 'open', ->
-							__newFile.extra = _.assign fileId: @id, metadata
-						
-						@outs.once 'close', (file) ->
-							done null, file
-						
-						# end downstream if error from upstream	
-						__newFile.once 'error', (err) =>
-							@outs?.end()
-							Promise.reject err
-						
-						@outs.once 'error', Promise.reject
-							
-						__newFile.pipe @outs
-						
+
+						__newFile
+							.pipe self.gfs.createWriteStream
+								filename:	fd
+								root:		self.opts.bucket
+								content_type: __newFile.headers['content-type']
+								metadata: metadata
+
+							.once 'open', ->
+								__newFile.extra = _.assign fileId: @id, metadata
+
+							.once 'close', (file) ->
+								done null, file
+
+							.once 'error', (err) =>
+								# end downstream if error from upstream
+								@end()
+								Promise.reject err
 					.catch (err) =>
 						# end receiver stream and notify upstream if error from downstream
 						@end()
 						done err
-		
+
 		return new Receiver
