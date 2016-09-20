@@ -2,6 +2,7 @@ path = require 'path'
 util = require 'util'
 stream = require 'stream'
 concat = require 'concat-stream'
+mime = require './mime'
 _ = require 'lodash'
 Grid = require 'gridfs-stream'
 Promise = require 'bluebird'
@@ -155,26 +156,23 @@ module.exports = (opts) ->
 							fd:			fd
 							dirname:	__newFile.dirname || path.dirname(fd)
 
-						__newFile
-							.pipe self.gfs.createWriteStream
-								filename:	fd
-								root:		self.opts.bucket
-								content_type: __newFile.headers['content-type']
-								metadata: metadata
+						out = __newFile
+							.pipe mime fd
 
-							.once 'open', ->
-								__newFile.extra = _.assign fileId: @id, metadata
+							.on 'mime', (type) ->
 
-							.once 'close', (file) ->
-								done null, file
-
-							.once 'error', (err) =>
-								# end downstream if error from upstream
-								@end()
-								Promise.reject err
-					.catch (err) =>
-						# end receiver stream and notify upstream if error from downstream
-						@end()
-						done err
+								out
+									.pipe self.gfs.createWriteStream
+										filename:	fd
+										root:		self.opts.bucket
+										content_type: type
+										metadata: metadata
+									.once 'open', ->
+										__newFile.extra = _.assign fileId: @id, metadata
+									.once 'close', (file) ->
+										done null, file
+									.once 'error', (err) ->
+										@end()
+										done err
 
 		return new Receiver
