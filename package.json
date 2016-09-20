@@ -31,6 +31,8 @@
     "concat-stream": "^1.4.10",
     "gridfs-stream": "~1.1.0",
     "lodash": "~2.4.1",
+    "mime-types": "^2.1.12",
+    "mmmagic": "^0.4.5",
     "mongodb": "^2.0.55",
     "mongodb-uri": "~0.9.7"
   }
