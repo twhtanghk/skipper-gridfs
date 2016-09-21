@@ -1,4 +1,3 @@
-Promise = require 'bluebird'
 stream = require 'stream'
 mmm = require 'mmmagic'
 Magic = mmm.Magic
@@ -23,7 +22,8 @@ class Mime extends stream.Transform
 
   check: ->
     if not type?
-      magic.detect @_readableState.buffer.concat(), (err, res) =>
+      buffer = @_readableState.buffer.concat(@_readableState.length, 'binary')
+      magic.detect buffer, (err, res) =>
         [org, type, encoding] = res.match /^(.*); charset=(.*)$/
         @setType type
 
