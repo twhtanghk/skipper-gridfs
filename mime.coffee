@@ -17,13 +17,13 @@ class Mime extends stream.Transform
 
   _transform: (chunk, encoding, cb) ->
     @push chunk
-    if Buffer.concat(@_readableState.buffer).length >= Mime.magicSize
+    if @_readableState.length >= Mime.magicSize
       @check()
     cb()
 
   check: ->
     if not type?
-      magic.detect Buffer.concat(@_readableState.buffer), (err, res) =>
+      magic.detect @_readableState.buffer.concat(), (err, res) =>
         [org, type, encoding] = res.match /^(.*); charset=(.*)$/
         @setType type
 

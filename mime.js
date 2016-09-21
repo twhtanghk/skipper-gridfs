@@ -38,7 +38,7 @@
 
     Mime.prototype._transform = function(chunk, encoding, cb) {
       this.push(chunk);
-      if (Buffer.concat(this._readableState.buffer).length >= Mime.magicSize) {
+      if (this._readableState.length >= Mime.magicSize) {
         this.check();
       }
       return cb();
@@ -46,7 +46,7 @@
 
     Mime.prototype.check = function() {
       if (typeof type === "undefined" || type === null) {
-        return magic.detect(Buffer.concat(this._readableState.buffer), (function(_this) {
+        return magic.detect(this._readableState.buffer.concat(), (function(_this) {
           return function(err, res) {
             var encoding, org, ref, type;
             ref = res.match(/^(.*); charset=(.*)$/), org = ref[0], type = ref[1], encoding = ref[2];
